@@ -1,4 +1,4 @@
-import pygame
+import pygame as pg
 import sys
 import random
 import os
@@ -8,10 +8,16 @@ import math
 script_dir = os.path.dirname(os.path.abspath(__file__))
 fig_dir = os.path.join(script_dir, "fig")
 
-# --- 定数 ---
+# 定数
 SCREEN_WIDTH = 600
 SCREEN_HEIGHT = 800
 FPS = 60
+
+# 変数
+ENEMY_BULLET_DAMAGE = 10
+PLAYER_COLLIDE_DAMAGE = 20
+IWA_COLLIDE_DAMAGE = 30
+MID_BOSS_SPAWN_SCORE = 5
 
 # 色
 WHITE = (255, 255, 255)
@@ -20,93 +26,83 @@ RED = (255, 50, 50)
 YELLOW = (255, 255, 0)
 GREEN = (0, 255, 0)
 GRAY = (100, 100, 100)
-BOSS_GREEN = (0, 150, 50)
+# BOSS_GREEN = (0, 150, 50)
 CYAN = (0, 255, 255)
 
 # --- ゲームの初期化 ---
-pygame.init()
-pygame.font.init()
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Xevious Style Shooter")
-clock = pygame.time.Clock()
+pg.init()
+pg.font.init()
+screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pg.display.set_caption("Xevious Style Shooter")
+clock = pg.time.Clock()
 
 
-# --- 画像ファイルの読み込み ---
+# 画像ファイルの読み込み
 if not os.path.exists(fig_dir):
     os.makedirs(fig_dir)
     print(f"Warning: '{fig_dir}' directory not found. Created an empty one.")
 
-try:
-    PLAYER_IMAGE = pygame.image.load(
-        os.path.join(fig_dir, "koukaton.png")
-    ).convert_alpha()
-    ENEMY_IMAGE = pygame.image.load(os.path.join(fig_dir, "enemy.png")).convert_alpha()
-    PLAYER_BULLET_IMAGE = pygame.image.load(
-        os.path.join(fig_dir, "beam.png")
-    ).convert_alpha()
-    ENEMY_BULLET_IMAGE = pygame.image.load(
-        os.path.join(fig_dir, "beam.png")
-    ).convert_alpha()
-    IWA_IMAGE = pygame.image.load(os.path.join(fig_dir, "iwa_01.png")).convert_alpha()
-
+# 画像読み込み用の関数
+def safe_load(path, fallback_size=(40, 40), fillcolor = (120, 120, 120)):
     try:
-        LAZER_IMAGE = pygame.image.load(os.path.join(fig_dir, "lazer.png")).convert_alpha()
-    except pygame.error:
-        print("Warning: lazer.png not found.")
-        LAZER_IMAGE = pygame.Surface((20, SCREEN_HEIGHT))
-        LAZER_IMAGE.fill(CYAN)
-        LAZER_IMAGE.set_colorkey(BLACK)
+        return pg.image.load(os.path.join(fig_dir, path)).convert_alpha()
+    except Exception:
+        surf = pg.Surface(fallback_size, pg.SRCAPHA)
+        surf.fill(fillcolor)
+        return surf
+    
+PLAYER_IMAGE = safe_load("koukaton.png", (40, 40))
+ENEMY_IMAGE = safe_load("enemy.png", (40, 40))
+PLAYER_BULLET_IMAGE = safe_load("beam.png", (25, 15))
+ENEMY_BULLET_IMAGE = safe_load("beam.png", (30, 15))
+IWA_IMAGE = safe_load("iwa_01.png", (100, 100))
+LAZER_IMAGE = safe_load("lazer.png", (20, 20))
+HEAL_ITEM_IMAGE = safe_load("heal.png", (30, 30))
+ATTACK_ITEM_IMAGE = safe_load("attack.png", (30, 30))
+EXPLOSION_IMAGE_SINGLE = safe_load("explosion.gif", (60, 60))
+BOSS_IMAGE = safe_load("boss.png", (120, 100))
+MID_BOSS_IMAGE = safe_load("super_enemy.png", (120, 120))
+    
+# try:
+#     # アニメーション用のフレームを念のため読み込む
+#     EXPLOSION_FRAMES = []
+#     for i in range(10):
+#         frame_filename = os.path.join(fig_dir, f"explosion_{i:02d}.png")
+#         if os.path.exists(frame_filename):
+#             EXPLOSION_FRAMES.append(pygame.image.load(frame_filename).convert_alpha())
 
-    try:
-        HEAL_ITEM_IMAGE = pygame.image.load(os.path.join(fig_dir, "heal.png")).convert_alpha()
-    except pygame.error:
-        HEAL_ITEM_IMAGE = pygame.Surface((25, 25))
-        HEAL_ITEM_IMAGE.fill(GREEN)
+#     if not EXPLOSION_FRAMES:
+#         # アニメーションフレームが一つもない場合、単一画像で代用
+#         EXPLOSION_FRAMES = [EXPLOSION_IMAGE_SINGLE]
 
-    try:
-        ATTACK_ITEM_IMAGE = pygame.image.load(os.path.join(fig_dir, "attack.png")).convert_alpha()
-    except pygame.error:
-        ATTACK_ITEM_IMAGE = pygame.Surface((25, 25))
-        ATTACK_ITEM_IMAGE.fill(YELLOW)
+# except pygame.error as e:
+#     print(f"Error loading image: {e}")
+#     pygame.quit()
+#     sys.exit()
 
-    try:
-        EXPLOSION_IMAGE_SINGLE = pygame.image.load(
-            os.path.join(fig_dir, "explosion.gif")
-        ).convert_alpha()
-    except pygame.error:
-        print("Warning: explosion.gif for single-frame explosion not found.")
-        EXPLOSION_IMAGE_SINGLE = pygame.Surface((60, 60), pygame.SRCALPHA)
-        pygame.draw.circle(EXPLOSION_IMAGE_SINGLE, RED, (30, 30), 30)
+EXPLOSION_FRAMES = []
+for i in range(100):
+    p = os.path.join(fig_dir, f"explosion_{i:02d}.png")
+    if os.path.exists(p):
+        try:
+            EXPLOSION_FRAMES += [pg.image.load(p).convert_alpha()]
+        except Exception:
+            pass
 
-    try:
-        BOSS_IMAGE = pygame.image.load(os.path.join(fig_dir, "boss.png")).convert_alpha()
-    except pygame.error:
-        print("Warning: 'boss.png' not found. Using a fallback green rectangle.")
-        BOSS_IMAGE = pygame.Surface((120, 100))
-        BOSS_IMAGE.fill(BOSS_GREEN)
+if not EXPLOSION_FRAMES:
+    EXPLOSION_FRAMES = [EXPLOSION_IMAGE_SINGLE]
 
-    # アニメーション用のフレームも念のため読み込む（今回は使わないが、エラー回避のため）
-    EXPLOSION_FRAMES = []
-    for i in range(10):
-        frame_filename = os.path.join(fig_dir, f"explosion_{i:02d}.png")
-        if os.path.exists(frame_filename):
-            EXPLOSION_FRAMES.append(pygame.image.load(frame_filename).convert_alpha())
-
-    if not EXPLOSION_FRAMES:
-        # アニメーションフレームが一つもない場合、単一画像で代用
-        EXPLOSION_FRAMES = [EXPLOSION_IMAGE_SINGLE]
-
-except pygame.error as e:
-    print(f"Error loading image: {e}")
-    pygame.quit()
-    sys.exit()
-
+# フォント
+score_font = pg.font.SysFont(None, 36)
+game_over_font = pg.font.SysFont(None, 64, bold=True)
+boss_warning_font = pg.font.SysFont(None, 72, bold=True)
+info_font = pg.font.SysFont(None, 30)
 
 # --- クラス定義 ---
-class Player(pygame.sprite.Sprite):
+class Player(pg.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        self.image = pygame.transform.scale(PLAYER_IMAGE, (40, 40))
+        self.image = pg.transform.scale(PLAYER_IMAGE, (40, 40))
         self.rect = self.image.get_rect(centerx=SCREEN_WIDTH // 2, bottom=SCREEN_HEIGHT - 30)
         self.speed_x = 0
         self.hidden = False
@@ -117,7 +113,7 @@ class Player(pygame.sprite.Sprite):
         self.charge_max_time = 1000
         self.charge_value = 0
         self.shoot_delay = 250
-        self.last_shot = pygame.time.get_ticks()
+        self.last_shot = pg.time.get_ticks()
         self.powerup_level = 0
         self.powerup_duration = 7000
         self.powerup_end_time = 0
@@ -128,9 +124,9 @@ class Player(pygame.sprite.Sprite):
             return
 
         self.speed_x = 0
-        if keys[pygame.K_LEFT]:
+        if keys[pg.K_LEFT]:
             self.speed_x = -7
-        if keys[pygame.K_RIGHT]:
+        if keys[pg.K_RIGHT]:
             self.speed_x = 7
 
         self.rect.x += self.speed_x
@@ -142,17 +138,17 @@ class Player(pygame.sprite.Sprite):
 
         if (
             self.powerup_level > 0
-            and pygame.time.get_ticks() > self.powerup_end_time
+            and pg.time.get_ticks() > self.powerup_end_time
         ):
             self.powerup_level = 0
             if self.active_laser:
                 self.active_laser.kill()
-                setattr(self, "active_laser", None)
+                self.active_laser = None
             print("Power-up ended.")
 
-        now = pygame.time.get_ticks()
+        now = pg.time.get_ticks()
 
-        if keys[pygame.K_v]:
+        if keys[pg.K_v]:
             if not self.is_charging:
                 self.is_charging = True
                 self.charge_start_time = now
@@ -168,7 +164,7 @@ class Player(pygame.sprite.Sprite):
                 self.is_charging = False
                 self.charge_value = 0
 
-        if keys[pygame.K_SPACE]:
+        if keys[pg.K_SPACE]:
             self.shoot(all_sprites, bullets_group, now)
 
     def shoot(self, all_sprites, bullets_group, now):
@@ -205,12 +201,11 @@ class Player(pygame.sprite.Sprite):
         return self.health <= 0
 
     def heal(self, amount):
-        self.health += amount
-        self.health = min(self.health, self.max_health)
+        self.health = min(self.health + amount, self.max_health)
 
     def power_up(self):
         self.powerup_level = min(2, self.powerup_level + 1)
-        self.powerup_end_time = pygame.time.get_ticks() + self.powerup_duration
+        self.powerup_end_time = pg.time.get_ticks() + self.powerup_duration
         print(f"Power-up! Level {self.powerup_level}")
 
     def hide(self):
@@ -218,10 +213,10 @@ class Player(pygame.sprite.Sprite):
         self.kill()
 
 
-class Enemy(pygame.sprite.Sprite):
+class Enemy(pg.sprite.Sprite):
     def __init__(self, speed_level=0, all_sprites_ref=None, enemy_bullets_group_ref=None):
         super().__init__()
-        self.image = pygame.transform.scale(ENEMY_IMAGE, (40, 40))
+        self.image = pg.transform.scale(ENEMY_IMAGE, (40, 40))
         self.rect = self.image.get_rect(
             x=random.randrange(0, SCREEN_WIDTH - 40), y=random.randrange(-100, -40)
         )
@@ -230,11 +225,11 @@ class Enemy(pygame.sprite.Sprite):
         speed_increase = speed_level * 0.4
         min_speed = int(base_speed_min + speed_increase)
         max_speed = int(base_speed_max + speed_increase)
-        self.speed_y = random.randrange(min_speed, max_speed + 1)
+        self.speed_y = random.randrange(min_speed, max_speed) # +1を除去
         self.all_sprites = all_sprites_ref
         self.enemy_bullets_group = enemy_bullets_group_ref
         self.enemy_shoot_delay = 2500
-        self.last_shot = pygame.time.get_ticks() - random.randrange(0, self.enemy_shoot_delay)
+        self.last_shot = pg.time.get_ticks() - random.randrange(0, self.enemy_shoot_delay)
         self.health = 1
         self.score_value = 1
 
@@ -245,7 +240,7 @@ class Enemy(pygame.sprite.Sprite):
         self.shoot()
 
     def shoot(self):
-        now = pygame.time.get_ticks()
+        now = pg.time.get_ticks()
         if now - self.last_shot > self.enemy_shoot_delay:
             self.last_shot = now
             b = EnemyBullet(self.rect.centerx, self.rect.bottom)
@@ -269,7 +264,7 @@ class BigEnemy(Enemy):
     ):
         super().__init__(speed_level, all_sprites_ref, enemy_bullets_group_ref)
         self.player = player_ref
-        self.image = pygame.transform.scale(BOSS_IMAGE, (120, 100))
+        self.image = pg.transform.scale(BOSS_IMAGE, (120, 100))
         self.rect = self.image.get_rect(x=(SCREEN_WIDTH - 120) // 2, y=-100)
         self.speed_y = 1
         self.speed_x = 3
@@ -277,7 +272,7 @@ class BigEnemy(Enemy):
         self.health = 30
         self.score_value = 50
         self.enemy_shoot_delay = 1000
-        self.last_shot = pygame.time.get_ticks()
+        self.last_shot = pg.time.get_ticks()
 
     def update(self):
         if self.rect.y < self.target_y:
@@ -293,7 +288,7 @@ class BigEnemy(Enemy):
     def shoot(self):
         if self.all_sprites is None or self.enemy_bullets_group is None:
             return
-        now = pygame.time.get_ticks()
+        now = pg.time.get_ticks()
         if now - self.last_shot > self.enemy_shoot_delay:
             self.last_shot = now
             b_left = EnemyBullet(self.rect.centerx - 40, self.rect.bottom, 10, self.player)
@@ -302,10 +297,10 @@ class BigEnemy(Enemy):
             self.enemy_bullets_group.add(b_left, b_right)
 
 
-class Iwa(pygame.sprite.Sprite):
+class Iwa(pg.sprite.Sprite):
     def __init__(self, speed_level=0, all_sprites_ref=None):
         super().__init__()
-        self.image = pygame.transform.scale(IWA_IMAGE, (100, 100))
+        self.image = pg.transform.scale(IWA_IMAGE, (100, 100))
         self.rect = self.image.get_rect(
             x=random.randrange(0, SCREEN_WIDTH - 100), y=random.randrange(-100, -40)
         )
@@ -314,7 +309,7 @@ class Iwa(pygame.sprite.Sprite):
         speed_increase = speed_level * 0.4
         min_speed = int(base_speed_min + speed_increase)
         max_speed = int(base_speed_max + speed_increase)
-        self.speed_y = random.randrange(min_speed, max_speed + 1)
+        self.speed_y = random.randrange(min_speed, max_speed) # +1を除外
         self.all_sprites = all_sprites_ref
 
     def update(self):
@@ -323,11 +318,11 @@ class Iwa(pygame.sprite.Sprite):
             self.kill()
 
 
-class PlayerBullet(pygame.sprite.Sprite):
+class PlayerBullet(pg.sprite.Sprite):
     def __init__(self, x, y, speed_x=0):
         super().__init__()
-        raw_image = pygame.transform.scale(PLAYER_BULLET_IMAGE, (25, 15))
-        self.image = pygame.transform.rotate(raw_image, 90)
+        raw_image = pg.transform.scale(PLAYER_BULLET_IMAGE, (25, 15))
+        self.image = pg.transform.rotate(raw_image, 90)
         self.rect = self.image.get_rect(bottom=y, centerx=x)
         self.speed_y = -10
         self.speed_x = speed_x
@@ -339,14 +334,14 @@ class PlayerBullet(pygame.sprite.Sprite):
             self.kill()
 
 
-class PlayerChargeShot(pygame.sprite.Sprite):
+class PlayerChargeShot(pg.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        raw_image = pygame.transform.scale(PLAYER_BULLET_IMAGE, (120, 60))
-        self.image = pygame.transform.rotate(raw_image, 90)
-        color_surface = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
+        raw_image = pg.transform.scale(PLAYER_BULLET_IMAGE, (120, 60))
+        self.image = pg.transform.rotate(raw_image, 90)
+        color_surface = pg.Surface(self.image.get_size(), pg.SRCALPHA)
         color_surface.fill(RED)
-        self.image.blit(color_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        self.image.blit(color_surface, (0, 0), special_flags=pg.BLEND_RGBA_MULT)
         self.rect = self.image.get_rect(bottom=y, centerx=x)
         self.speed_y = -12
 
@@ -356,14 +351,14 @@ class PlayerChargeShot(pygame.sprite.Sprite):
             self.kill()
 
 
-class EnemyBullet(pygame.sprite.Sprite):
+class EnemyBullet(pg.sprite.Sprite):
     def __init__(self, x, y, speed_y_val=7, player_ref=None):
         super().__init__()
-        raw_image = pygame.transform.scale(ENEMY_BULLET_IMAGE, (30, 15))
-        self.image = pygame.transform.rotate(raw_image, -90)
-        color_surface = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
+        raw_image = pg.transform.scale(ENEMY_BULLET_IMAGE, (30, 15))
+        self.image = pg.transform.rotate(raw_image, -90)
+        color_surface = pg.Surface(self.image.get_size(), pg.SRCALPHA)
         color_surface.fill(YELLOW)
-        self.image.blit(color_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        self.image.blit(color_surface, (0, 0), special_flags=pg.BLEND_RGBA_MULT)
         self.rect = self.image.get_rect(top=y, centerx=x)
         self.speed_y = speed_y_val
         self.speed_x = 0
@@ -386,11 +381,11 @@ class EnemyBullet(pygame.sprite.Sprite):
             self.kill()
 
 
-class SuperLaser(pygame.sprite.Sprite):
+class SuperLaser(pg.sprite.Sprite):
     def __init__(self, player_obj):
         super().__init__()
         self.player = player_obj
-        self.image = pygame.transform.scale(LAZER_IMAGE, (20, SCREEN_HEIGHT))
+        self.image = pg.transform.scale(LAZER_IMAGE, (20, SCREEN_HEIGHT))
         self.rect = self.image.get_rect()
         self.update()
 
@@ -399,7 +394,7 @@ class SuperLaser(pygame.sprite.Sprite):
         self.rect.bottom = self.player.rect.top
 
 
-class Item(pygame.sprite.Sprite):
+class Item(pg.sprite.Sprite):
     def __init__(self, center):
         super().__init__()
         self.rect = self.image.get_rect(center=center)
@@ -413,7 +408,7 @@ class Item(pygame.sprite.Sprite):
 
 class HealItem(Item):
     def __init__(self, center):
-        self.image = pygame.transform.scale(HEAL_ITEM_IMAGE, (30, 30))
+        self.image = pg.transform.scale(HEAL_ITEM_IMAGE, (30, 30))
         super().__init__(center)
 
     def apply_effect(self, player):
@@ -422,37 +417,37 @@ class HealItem(Item):
 
 class AttackUpItem(Item):
     def __init__(self, center):
-        self.image = pygame.transform.scale(ATTACK_ITEM_IMAGE, (30, 30))
+        self.image = pg.transform.scale(ATTACK_ITEM_IMAGE, (30, 30))
         super().__init__(center)
 
     def apply_effect(self, player):
         player.power_up()
 
 
-class Explosion(pygame.sprite.Sprite):
+class Explosion(pg.sprite.Sprite):
     def __init__(self, center, size="normal", is_anime=True):
         super().__init__()
         self.is_anime = is_anime
         if self.is_anime and EXPLOSION_FRAMES:
             self.frames = list(EXPLOSION_FRAMES)
             scale = (90, 90) if size == "large" else (60, 60)
-            self.frames = [pygame.transform.scale(f, scale) for f in self.frames]
+            self.frames = [pg.transform.scale(f, scale) for f in self.frames]
             self.frame_rate = 70
             self.current_frame = 0
             self.image = self.frames[self.current_frame]
             self.rect = self.image.get_rect(center=center)
-            self.last_update = pygame.time.get_ticks()
+            self.last_update = pg.time.get_ticks()
         else:
             self.is_anime = False
             scale = (90, 90) if size == "large" else (60, 60)
-            self.image = pygame.transform.scale(EXPLOSION_IMAGE_SINGLE, scale)
+            self.image = pg.transform.scale(EXPLOSION_IMAGE_SINGLE, scale)
             self.rect = self.image.get_rect(center=center)
             self.duration = 400
-            self.creation_time = pygame.time.get_ticks()
+            self.creation_time = pg.time.get_ticks()
 
     def update(self):
         if self.is_anime:
-            now = pygame.time.get_ticks()
+            now = pg.time.get_ticks()
             if now - self.last_update > self.frame_rate:
                 self.last_update = now
                 self.current_frame += 1
@@ -461,24 +456,152 @@ class Explosion(pygame.sprite.Sprite):
                 else:
                     self.image = self.frames[self.current_frame]
         else:
-            if pygame.time.get_ticks() - self.creation_time > self.duration:
+            if pg.time.get_ticks() - self.creation_time > self.duration:
                 self.kill()
 
 
+class MidBoss(pg.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.image = pg.transform.scale(MID_BOSS_IMAGE, (120, 120))
+        self.rect = self.image.get_rect()
+        self.rect.centerx = SCREEN_WIDTH // 2
+        self.rect.y = -150
+        self.speed_x = 3
+        self.speed_y = 2
+        self.direction = 1
+        self.shoot_delay = 900
+        self.last_shot = pg.time.get_ticks()
+        self.shoot_pattern = 0
+        self.pattern_timer = 0
+        self.spiral_angle = 0.0
+        self.has_appeared = False
+        self.health = 30
+        self.max_health = 30
+        self.score_value = 0
+        self.is_special_moving = False
+        self.special_moving_timer = 0
+
+    def update(self):
+        if not self.has_appeared:
+            self.rect.y += self.speed_y
+            if self.rect.y >= 50:
+                self.has_appeared = True
+            return
+        
+        if self.is_special_moving:
+            self.special_moving_timer += 1
+            if self.special_moving_timer < 60:
+                self.rect.x += self.speed_x * 3 * self.direction
+                self.rect.y += math.sin(pg.time.get_ticks() * 0.01) * 3
+            else:
+                self.is_special_moving = False
+                self.special_moving_timer = 0
+        else:
+            self.rect.x += self.speed_x * self.direction
+            if self.rect.right >= SCREEN_WIDTH - 10:
+                self.direction = -1
+            elif self.rect.left <= 10:
+                self.direction = 1
+            self.rect.y += math.sin(pg.time.get_ticks() * 0.005) * 1.5
+
+        self.shoot()
+        self.pattern_timer += 1
+        if self.pattern_timer >= 180:
+            self.shoot_pattern = (self.shoot_pattern + 1) % 2
+            self.pattern_timer = 0
+
+        if not self.is_special_moving and random.random() < 0.003:
+            self.is_special_moving = True
+            self.special_moving_timer = 0
+
+    def shoot(self):
+        global all_sprites
+        global enemy_bullets_group
+        now = pg.time.get_ticks()
+        if now - self.last_shot < self.shoot_delay:
+            return
+        self.last_shot = now
+        if self.shoot_pattern == 0:
+            cnt = 10
+            step = 360.0 / cnt
+            base = self.spiral_angle
+            for i in range(cnt):
+                ang = base + i * step
+                b = MidBossBullet(self.rect.centerx, self.rect.centery, ang, mode="spiral")
+                all_sprites.add(b)
+                enemy_bullets_group.add(b)
+            self.spiral_angle = (self.spiral_angle + 10) % 360
+        else:
+            spread_count = 10
+            spread_width = 100
+            center_angle = 90
+            start = center_angle - spread_width / 2
+            step = spread_width / (spread_count - 1) if spread_count > 1 else 0
+            for i in range(spread_count):
+                ang = start + i * step
+                b = MidBossBullet(self.rect.centerx, self.rect.centery + 20, ang, mode="scatter")
+                all_sprites.add(b)
+                enemy_bullets_group.add(b)
+
+    def hit(self):
+        self.health -= 1
+        return self.health <= 0
+    
+    def draw_health_bar(self, surface):
+        bw = 100
+        bh = 10
+        bx = self.rect.centerx - bw // 2
+        by = self.rect.top - 20
+        pg.draw.rect(surface, RED, (bx, by, bw, bh))
+        hw = int((self.health / self.max_health) * bw)
+        pg.draw.rect(surface, YELLOW, (bx, by, hw, bh))
+
+
+class MidBossBullet(pg.sprite.Sprite):
+    def __init__(self, x, y, angle_deg, mode="spriral"):
+        super().__init__()
+        r = 12
+        surf = pg.Surface((r * 2, r * 2), pg.SRCALPHA)
+        pg.draw.circle(surf, (255, 50, 50), (r, r), r)
+        self.image = surf
+        self.rect = self.image.get_rect(center=(int(x), int(y)))
+        self.pos_x = float(self.rect.centerx)
+        self.pos_y = float(self.rect.centery)
+        self.mode = mode
+        rad = math.radians(angle_deg)
+        dx = math.cos(rad)
+        dy = math.sin(rad)
+        if mode == "spiral":
+            speed = 5.5
+        elif mode == "scatter":
+            speed = 6.0
+        else:
+            speed = 5.0
+        self.vx = dx * speed
+        self.vy = dy * speed
+
+    def update(self):
+        self.pos_x += self.vx
+        self.pos_y += self.vy
+        self.rect.centerx = int(self.pos_x)
+        self.rect.centery = int(self.pos_y)
+        if (self.rect.top > SCREEN_HEIGHT + 60 or self.rect.bottom < -60 or self.rect.left > SCREEN_WIDTH + 60 or self.rect.right < -60):
+            self.kill()
+
+
 def create_stars(number):
-    stars = []
-    [stars.append([random.randrange(0, SCREEN_WIDTH), random.randrange(0, SCREEN_HEIGHT), random.randrange(1, 4), random.randrange(1, 4)]) for _ in range(number)]
-    return stars
+    return [[random.randrange(0, SCREEN_WIDTH), random.randrange(0, SCREEN_HEIGHT), random.randrange(1, 4), random.randrange(1, 4)] for _ in range(number)]
 
 
 def draw_stars(surface, stars, speed_level=0):
-    speed_modifier = 1.0 + speed_level * 0.15
+    modifier = 1.0 + speed_level * 0.15
     for star in stars:
-        pygame.draw.circle(surface, WHITE, (star[0], star[1]), star[3])
-        star[1] += star[2] * speed_modifier
+        pg.draw.circle(surface, WHITE, (star[0], star[1]), star[3])
+        star[1] += star[2] * modifier
         if star[1] > SCREEN_HEIGHT:
             star.clear()
-            star.extend([random.randrange(0, SCREEN_WIDTH), 0, random.randrange(1, 4), random.randrange(1, 4)])
+            star += [random.randrange(0, SCREEN_WIDTH), 0, random.randrange(1, 4), random.randrange(1, 4)]
 
 
 def draw_text(surface, text, font, color, x, y, align="topright"):
@@ -501,78 +624,90 @@ def draw_charge_gauge(surface, current_charge, max_charge, player_bottom_y):
         y_pos = player_bottom_y + 10
         fill_ratio = current_charge / max_charge
         fill_width = int(fill_ratio * gauge_width)
-        outline_rect = pygame.Rect(x_pos, y_pos, gauge_width, gauge_height)
-        fill_rect = pygame.Rect(x_pos, y_pos, fill_width, gauge_height)
+
+        outline_rect = pg.Rect(x_pos, y_pos, gauge_width, gauge_height)
+        fill_rect = pg.Rect(x_pos, y_pos, fill_width, gauge_height)
         color = YELLOW if fill_ratio >= 1.0 else GREEN
-        pygame.draw.rect(surface, GRAY, outline_rect)
-        pygame.draw.rect(surface, color, fill_rect)
-        pygame.draw.rect(surface, WHITE, outline_rect, 1)
+
+        pg.draw.rect(surface, GRAY, outline_rect)
+        pg.draw.rect(surface, color, fill_rect)
+        pg.draw.rect(surface, WHITE, outline_rect, 1)
 
 
 def draw_health_bar(surface, x, y, pct):
     pct = max(0, pct)
-    BAR_LENGTH, BAR_HEIGHT = 150, 15
+    BAR_LENGTH = 150
+    BAR_HEIGHT = 15
     fill = (pct / 100) * BAR_LENGTH
     bar_color = GREEN if pct > 60 else YELLOW if pct > 30 else RED
-    pygame.draw.rect(surface, bar_color, (x, y, fill, BAR_HEIGHT))
-    pygame.draw.rect(surface, WHITE, (x, y, BAR_LENGTH, BAR_HEIGHT), 2)
-
-
-score_font = pygame.font.SysFont(None, 36)
-game_over_font = pygame.font.SysFont(None, 64, bold=True)
-boss_warning_font = pygame.font.SysFont(None, 72, bold=True)
-info_font = pygame.font.SysFont(None, 30)
+    pg.draw.rect(surface, bar_color, (x, y, fill, BAR_HEIGHT))
+    pg.draw.rect(surface, WHITE, (x, y, BAR_LENGTH, BAR_HEIGHT), 2)
 
 stars = create_stars(100)
 
-all_sprites = pygame.sprite.Group()
-enemies_group = pygame.sprite.Group()
-player_bullets_group = pygame.sprite.Group()
-player_charge_bullets_group = pygame.sprite.Group()
-enemy_bullets_group = pygame.sprite.Group()
-iwa_group = pygame.sprite.Group()
-items_group = pygame.sprite.Group()
-laser_group = pygame.sprite.Group()
+all_sprites = pg.sprite.Group()
+enemies_group = pg.sprite.Group()
+player_bullets_group = pg.sprite.Group()
+player_charge_bullets_group = pg.sprite.Group()
+enemy_bullets_group = pg.sprite.Group()
+iwa_group = pg.sprite.Group()
+items_group = pg.sprite.Group()
+laser_group = pg.sprite.Group()
+mid_boss_group = pg.sprite.Group()
 
 player = Player()
 all_sprites.add(player)
 
-ADD_ENEMY = pygame.USEREVENT + 1
+ADD_ENEMY = pg.USEREVENT + 1
 initial_spawn_rate = 1000
-pygame.time.set_timer(ADD_ENEMY, initial_spawn_rate)
+current_spawn_rate = initial_spawn_rate
+pg.time.set_timer(ADD_ENEMY, initial_spawn_rate)
 
-score, game_speed_level, game_over, running = 0, 0, False, True
+score = 0
+game_speed_level = 0
+game_over = False
+running = True
 level_up_message_time = 0
+
+mid_boss_spawned = False
+mid_boss_defeated = False
+mid_boss_warning_timer = 0
+mid_boss_defeat_time = 0
+
 boss_spawned = False
 boss_spawn_time = 30000
 boss_warning_time = 0
-game_start_time = pygame.time.get_ticks()
+game_start_time = pg.time.get_ticks()
+
 
 while running:
     clock.tick(FPS)
-    now = pygame.time.get_ticks()
+    now = pg.time.get_ticks()
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
+    for event in pg.event.get():
+        if event.type == pg.QUIT:
             running = False
-        elif game_over and event.type == pygame.KEYDOWN:
+
+        elif game_over and event.type == pg.KEYDOWN:
             running = False
+
         elif event.type == ADD_ENEMY and not game_over:
-            new_enemy = Enemy(game_speed_level, all_sprites, enemy_bullets_group)
-            all_sprites.add(new_enemy)
-            enemies_group.add(new_enemy)
+            if not boss_spawned:
+                new_enemy = Enemy(game_speed_level, all_sprites, enemy_bullets_group)
+                all_sprites.add(new_enemy)
+                enemies_group.add(new_enemy)
 
-            new_iwa = Iwa(game_speed_level, all_sprites)
-            all_sprites.add(new_iwa)
-            iwa_group.add(new_iwa)
+                new_iwa = Iwa(game_speed_level, all_sprites)
+                all_sprites.add(new_iwa)
+                iwa_group.add(new_iwa)
 
-    keys = pygame.key.get_pressed()
+    keys = pg.key.get_pressed()
 
     if not game_over:
         player.update(keys, all_sprites, player_bullets_group, player_charge_bullets_group)
 
     if player.powerup_level >= 2 and not game_over:
-        if keys[pygame.K_SPACE]:
+        if keys[pg.K_SPACE]:
             if not player.active_laser:
                 player.active_laser = SuperLaser(player)
                 all_sprites.add(player.active_laser)
@@ -585,33 +720,56 @@ while running:
         if player.active_laser:
             player.active_laser.kill()
             player.active_laser = None
+            
+    boss_spawn_delay = 10000
 
-    elapsed_time = now - game_start_time
+    if mid_boss_defeated and not boss_spawned:
+        time_since_defeat = now - mid_boss_defeat_time
 
-    if elapsed_time > (boss_spawn_time - 2000) and not boss_spawned and boss_warning_time == 0:
-        boss_warning_time = now
+        if time_since_defeat > (boss_spawn_delay - 2000) and boss_warning_time == 0:
+            boss_warning_time = now
 
-    if elapsed_time > boss_spawn_time and not boss_spawned:
-        boss = BigEnemy(game_speed_level, all_sprites, enemy_bullets_group, player)
-        all_sprites.add(boss)
-        enemies_group.add(boss)
-        boss_spawned = True
-        boss_warning_time = 0
-        pygame.time.set_timer(ADD_ENEMY, 0)
+    if mid_boss_defeated and not boss_spawned:
+        time_since_defeat = now - mid_boss_defeat_time
+
+        if time_since_defeat > boss_spawn_delay:
+            boss = BigEnemy(game_speed_level, all_sprites, enemy_bullets_group, player)
+            all_sprites.add(boss)
+            enemies_group.add(boss)
+            boss_spawned = True
+            boss_warning_time = 0
+            pg.time.set_timer(ADD_ENEMY, 0)
+
+    if score >= MID_BOSS_SPAWN_SCORE and not mid_boss_spawned and not mid_boss_defeated:
+        mid_boss_spawned = True
+        mid_boss_warning_timer = 180
+        mid_boss = MidBoss()
+        all_sprites.add(mid_boss)
+        mid_boss_group.add(mid_boss)
+        pg.time.set_timer(ADD_ENEMY, 0)
+
+    if mid_boss_warning_timer > 0:
+        mid_boss_warning_timer -= 1
 
     if not game_over:
         sprites_to_update = [s for s in all_sprites if s != player]
         for sprite in sprites_to_update:
-            sprite.update()
+            try:
+                sprite.update()
+            except TypeError:
+                try:
+                    sprite.update(keys, all_sprites, player_bullets_group, player_charge_bullets_group)
+                except Exception:
+                    pass
     else:
-        for s in all_sprites:
+        for s in list(all_sprites):
             if isinstance(s, Explosion):
                 s.update()
 
     if not game_over:
-        hits_normal = pygame.sprite.groupcollide(player_bullets_group, enemies_group, True, False)
-        hits_charge = pygame.sprite.groupcollide(player_charge_bullets_group, enemies_group, False, False)
-        hits_laser = pygame.sprite.groupcollide(laser_group, enemies_group, False, True)
+        hits_normal = pg.sprite.groupcollide(player_bullets_group, enemies_group, True, False)
+        hits_charge = pg.sprite.groupcollide(player_charge_bullets_group, enemies_group, False, False)
+        hits_laser = pg.sprite.groupcollide(laser_group, enemies_group, False, True)
 
         enemies_destroyed_this_frame = 0
         enemies_to_process = set()
@@ -636,16 +794,39 @@ while running:
                     all_sprites.add(item)
                     items_group.add(item)
 
+        if mid_boss_spawned and not mid_boss_defeated:
+            mb_hits = pg.sprite.groupcollide(player_bullets_group, mid_boss_group, True, False)
+            for bullet, mbs in mb_hits.items():
+                for mb in mbs:
+                    if mb.hit():
+                        all_sprites.add(Explosion(mb.rect.center, "large"))
+                        score += mb.score_value
+                        mid_boss_defeated = True
+                        mb.kill()
+                        pg.time.set_timer(ADD_ENEMY, current_spawn_rate)
+                        mid_boss_defeat_time = now
+
+            mb_hits_charge = pg.sprite.groupcollide(player_charge_bullets_group, mid_boss_group, False, False)
+            for bullet, mbs in mb_hits_charge.items():
+                for mb in mbs:
+                    if mb.hit():
+                        all_sprites.add(Explosion(mb.rect.center, "large"))
+                        score += mb.score_value
+                        mid_boss_defeated = True
+                        mb.kill()
+                        pg.time.set_timer(ADD_ENEMY, current_spawn_rate)
+                        mid_boss_defeat_time = now
+
         if enemies_destroyed_this_frame > 0 and not boss_spawned:
             new_speed_level = score // 10
             if new_speed_level > game_speed_level:
                 game_speed_level = new_speed_level
-                level_up_message_time = pygame.time.get_ticks()
+                level_up_message_time = pg.time.get_ticks()
                 rate = max(150, int(initial_spawn_rate * (0.9 ** game_speed_level)))
-                pygame.time.set_timer(ADD_ENEMY, 0)
-                pygame.time.set_timer(ADD_ENEMY, rate)
+                pg.time.set_timer(ADD_ENEMY, 0)
+                pg.time.set_timer(ADD_ENEMY, rate)
 
-        player_enemy_hits = pygame.sprite.spritecollide(player, enemies_group, True)
+        player_enemy_hits = pg.sprite.spritecollide(player, enemies_group, True)
         if player_enemy_hits:
             if player.take_damage(20):
                 game_over = True
@@ -654,7 +835,7 @@ while running:
             else:
                 all_sprites.add(Explosion(player.rect.center, "normal", is_anime=False))
 
-        player_beam_hits = pygame.sprite.spritecollide(player, enemy_bullets_group, True)
+        player_beam_hits = pg.sprite.spritecollide(player, enemy_bullets_group, True)
         if player_beam_hits:
             if player.take_damage(10):
                 game_over = True
@@ -663,7 +844,7 @@ while running:
             else:
                 all_sprites.add(Explosion(player.rect.center, "normal", is_anime=False))
 
-        player_iwa_hits = pygame.sprite.spritecollide(player, iwa_group, True)
+        player_iwa_hits = pg.sprite.spritecollide(player, iwa_group, True)
         if player_iwa_hits:
             if player.take_damage(30):
                 game_over = True
@@ -672,12 +853,25 @@ while running:
             else:
                 all_sprites.add(Explosion(player.rect.center, "normal", is_anime=False))
 
-        for item in pygame.sprite.spritecollide(player, items_group, True):
+        for item in pg.sprite.spritecollide(player, items_group, True):
             item.apply_effect(player)
+
+        if mid_boss_spawned and not mid_boss_defeated:
+            player_mid_hits = pg.sprite.spritecollide(player,mid_boss_group, False)
+            if player_mid_hits:
+                all_sprites.add(Explosion(player.rect.center, "large"))
+                game_over = True
+                pg.time.set_timer(ADD_ENEMY, 0)
 
     screen.fill(BLACK)
     draw_stars(screen, stars, game_speed_level)
     all_sprites.draw(screen)
+
+
+    if mid_boss_spawned and not mid_boss_defeated:
+        for mb in mid_boss_group:
+            mb.draw_health_bar(screen)
+
 
     draw_text(screen, f"SCORE: {score}", score_font, WHITE, SCREEN_WIDTH - 10, 10, align="topright")
     draw_text(screen, f"LEVEL: {game_speed_level}", score_font, WHITE, 10, 10, align="topleft")
@@ -698,7 +892,7 @@ while running:
             screen, "Press any key to exit", info_font, WHITE, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50, "center"
         )
 
-    pygame.display.flip()
+    pg.display.flip()
 
-pygame.quit()
+pg.quit()
 sys.exit()
