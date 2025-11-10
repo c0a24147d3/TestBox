@@ -29,6 +29,9 @@ GRAY = (100, 100, 100)
 # BOSS_GREEN = (0, 150, 50)
 CYAN = (0, 255, 255)
 
+# 意味深な叫び声
+call = "逃げるなァ!!!!!逃げるな卑怯者!!!!!"
+
 # --- ゲームの初期化 ---
 pg.init()
 pg.font.init()
@@ -225,7 +228,7 @@ class Enemy(pg.sprite.Sprite):
         speed_increase = speed_level * 0.4
         min_speed = int(base_speed_min + speed_increase)
         max_speed = int(base_speed_max + speed_increase)
-        self.speed_y = random.randrange(min_speed, max_speed) # +1を除去
+        self.speed_y = random.randrange(min_speed, max_speed)
         self.all_sprites = all_sprites_ref
         self.enemy_bullets_group = enemy_bullets_group_ref
         self.enemy_shoot_delay = 2500
@@ -264,15 +267,19 @@ class BigEnemy(Enemy):
     ):
         super().__init__(speed_level, all_sprites_ref, enemy_bullets_group_ref)
         self.player = player_ref
-        self.image = pg.transform.scale(BOSS_IMAGE, (120, 100))
+        self.width = 120
+        self.height = 100
+        self.image = pg.transform.scale(BOSS_IMAGE, (self.width, self.height))
         self.rect = self.image.get_rect(x=(SCREEN_WIDTH - 120) // 2, y=-100)
+        self.scale = 1.0
         self.speed_y = 1
         self.speed_x = 3
         self.target_y = 100
-        self.health = 30
+        self.health = 100
         self.score_value = 50
         self.enemy_shoot_delay = 1000
         self.last_shot = pg.time.get_ticks()
+        self.last_threshold = 100
 
     def update(self):
         if self.rect.y < self.target_y:
@@ -284,6 +291,36 @@ class BigEnemy(Enemy):
                 self.speed_x *= -1
                 self.rect.x += self.speed_x
         self.shoot()
+
+        current_health = self.health
+
+        if current_health <= 80 and self.last_threshold == 100:
+            self.scale *= 0.5
+            self.last_threshold = 80
+            self.image = pg.transform.scale(BOSS_IMAGE, (self.width * self.scale, self.height * self.scale))
+            self.rect = self.image.get_rect(center=self.rect.center)
+            print(call)
+
+        elif current_health <= 60 and self.last_threshold == 80:
+            self.scale *= 0.5
+            self.last_threshold = 60
+            self.image = pg.transform.scale(BOSS_IMAGE, (self.width * self.scale, self.height * self.scale))
+            self.rect = self.image.get_rect(center=self.rect.center)
+            print(call)
+
+        elif current_health <= 40 and self.last_threshold == 60:
+            self.scale *= 0.5
+            self.last_threshold = 40
+            self.image = pg.transform.scale(BOSS_IMAGE, (self.width * self.scale, self.height * self.scale))
+            self.rect = self.image.get_rect(center=self.rect.center)
+            print(call)
+
+        if current_health <= 20 and self.last_threshold == 40:
+            self.scale *= 0.5
+            self.last_threshold = 20
+            self.image = pg.transform.scale(BOSS_IMAGE, (self.width * self.scale, self.height * self.scale))
+            self.rect = self.image.get_rect(center=self.rect.center)
+            print(call)
 
     def shoot(self):
         if self.all_sprites is None or self.enemy_bullets_group is None:
@@ -720,7 +757,7 @@ while running:
         if player.active_laser:
             player.active_laser.kill()
             player.active_laser = None
-            
+
     boss_spawn_delay = 10000
 
     if mid_boss_defeated and not boss_spawned:
