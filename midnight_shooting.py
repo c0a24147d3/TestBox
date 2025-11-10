@@ -1,8 +1,8 @@
-import pygame as pg
-import sys
-import random
-import os
 import math
+import os
+import pygame as pg
+import random
+import sys
 
 # スクリプトのパスを基準にディレクトリを設定
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -13,12 +13,6 @@ SCREEN_WIDTH = 600
 SCREEN_HEIGHT = 800
 FPS = 60
 
-# 変数
-ENEMY_BULLET_DAMAGE = 10
-PLAYER_COLLIDE_DAMAGE = 20
-IWA_COLLIDE_DAMAGE = 30
-MID_BOSS_SPAWN_SCORE = 5
-
 # 色
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -26,7 +20,6 @@ RED = (255, 50, 50)
 YELLOW = (255, 255, 0)
 GREEN = (0, 255, 0)
 GRAY = (100, 100, 100)
-# BOSS_GREEN = (0, 150, 50)
 CYAN = (0, 255, 255)
 
 # 意味深な叫び声
@@ -65,23 +58,6 @@ ATTACK_ITEM_IMAGE = safe_load("attack.png", (30, 30))
 EXPLOSION_IMAGE_SINGLE = safe_load("explosion.gif", (60, 60))
 BOSS_IMAGE = safe_load("boss.png", (120, 100))
 MID_BOSS_IMAGE = safe_load("super_enemy.png", (120, 120))
-    
-# try:
-#     # アニメーション用のフレームを念のため読み込む
-#     EXPLOSION_FRAMES = []
-#     for i in range(10):
-#         frame_filename = os.path.join(fig_dir, f"explosion_{i:02d}.png")
-#         if os.path.exists(frame_filename):
-#             EXPLOSION_FRAMES.append(pygame.image.load(frame_filename).convert_alpha())
-
-#     if not EXPLOSION_FRAMES:
-#         # アニメーションフレームが一つもない場合、単一画像で代用
-#         EXPLOSION_FRAMES = [EXPLOSION_IMAGE_SINGLE]
-
-# except pygame.error as e:
-#     print(f"Error loading image: {e}")
-#     pygame.quit()
-#     sys.exit()
 
 EXPLOSION_FRAMES = []
 for i in range(100):
@@ -710,6 +686,7 @@ mid_boss_spawned = False
 mid_boss_defeated = False
 mid_boss_warning_timer = 0
 mid_boss_defeat_time = 0
+MID_BOSS_SPAWN_SCORE = 5
 
 boss_spawned = False
 boss_spawn_time = 30000
@@ -854,6 +831,17 @@ while running:
                         pg.time.set_timer(ADD_ENEMY, current_spawn_rate)
                         mid_boss_defeat_time = now
 
+        if boss_spawned and not enemies_group:
+            screen.fill((0, 0, 0))
+            font = pg.font.Font(None, 74)
+            text = font.render("YOU-WIN!", True, (255, 255, 0))
+            text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+            screen.blit(text, text_rect)
+            pg.display.flip()
+
+            pg.time.wait(3000)
+            running = False
+
         if enemies_destroyed_this_frame > 0 and not boss_spawned:
             new_speed_level = score // 10
             if new_speed_level > game_speed_level:
@@ -863,6 +851,7 @@ while running:
                 pg.time.set_timer(ADD_ENEMY, 0)
                 pg.time.set_timer(ADD_ENEMY, rate)
 
+        # 被弾に関する設定
         player_enemy_hits = pg.sprite.spritecollide(player, enemies_group, True)
         if player_enemy_hits:
             if player.take_damage(20):
